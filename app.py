@@ -389,12 +389,33 @@ with st.sidebar:
         unsafe_allow_html=True
     )
     st.markdown("## 📂 Datos de entrada")
-    st.caption("Sube los 4 archivos del mes para generar el análisis")
 
-    maestro_file = st.file_uploader("1. Maestro de productos", type=["xlsx"], key="maestro")
-    ventas_file = st.file_uploader("2. Ventas 6 meses", type=["xlsx"], key="ventas")
-    fallidas_file = st.file_uploader("3. Ventas fallidas", type=["xlsx"], key="fallidas")
-    compras_file = st.file_uploader("4. Compras realizadas", type=["xlsx"], key="compras")
+    # --- Modo automático: leer desde carpeta INPUT del repositorio ---
+    _INPUT = Path(__file__).parent / "INPUT"
+    _archivos_auto = {
+        "maestro":  next(_INPUT.glob("MAESTRO*.xlsx"), None)   if _INPUT.exists() else None,
+        "ventas":   next(_INPUT.glob("VENTAS*.xlsx"), None)    if _INPUT.exists() else None,
+        "fallidas": next(_INPUT.glob("Planilla*.xlsx"), None)  if _INPUT.exists() else None,
+        "compras":  next(_INPUT.glob("COMPRAS*.xlsx"), None)   if _INPUT.exists() else None,
+    }
+    _modo_auto = all(_archivos_auto.values())
+
+    if _modo_auto:
+        st.success("✅ Archivos del mes cargados automáticamente desde el repositorio.")
+        st.caption(f"📁 Maestro: {_archivos_auto['maestro'].name}")
+        st.caption(f"📁 Ventas: {_archivos_auto['ventas'].name}")
+        st.caption(f"📁 Fallidas: {_archivos_auto['fallidas'].name}")
+        st.caption(f"📁 Compras: {_archivos_auto['compras'].name}")
+        maestro_file  = type("F", (), {"getvalue": lambda s: open(_archivos_auto["maestro"],  "rb").read()})()
+        ventas_file   = type("F", (), {"getvalue": lambda s: open(_archivos_auto["ventas"],   "rb").read()})()
+        fallidas_file = type("F", (), {"getvalue": lambda s: open(_archivos_auto["fallidas"], "rb").read()})()
+        compras_file  = type("F", (), {"getvalue": lambda s: open(_archivos_auto["compras"],  "rb").read()})()
+    else:
+        st.caption("Sube los 4 archivos del mes para generar el análisis")
+        maestro_file  = st.file_uploader("1. Maestro de productos",  type=["xlsx"], key="maestro")
+        ventas_file   = st.file_uploader("2. Ventas 6 meses",        type=["xlsx"], key="ventas")
+        fallidas_file = st.file_uploader("3. Ventas fallidas",       type=["xlsx"], key="fallidas")
+        compras_file  = st.file_uploader("4. Compras realizadas",    type=["xlsx"], key="compras")
 
     st.markdown("---")
     st.markdown("### ⚙️ Parámetros del modelo")
