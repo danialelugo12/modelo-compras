@@ -63,6 +63,18 @@ components.html(
 # CSS personalizado para look profesional
 st.markdown("""
 <style>
+    /* === OCULTAR BOTONES DE GITHUB Y FORK === */
+    .stActionButton, 
+    [data-testid="stToolbar"],
+    [data-testid="baseButton-header"],
+    a[href*="github.com"],
+    button[kind="header"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    header [data-testid="stToolbar"] {
+        display: none !important;
+    }
     /* === FORZAR FONDO BLANCO === */
     .stApp {
         background-color: #FFFFFF !important;
