@@ -1382,6 +1382,20 @@ with tab8:
     m3.metric("🟡 Parciales", f"{n_parcial:,}".replace(",", "."))
     m4.metric("🔵 Excedidas", f"{n_excedida:,}".replace(",", "."))
 
+    # --- Total capital invertido ---
+    total_capital = int((tabla["Comprado"] * tabla["PrecioNeto"]).sum())
+    if total_capital > 0:
+        capital_fmt = "$" + f"{total_capital:,}".replace(",", ".")
+        st.markdown(
+            f'<div style="background-color:#8B0000; border-radius:10px; padding:14px 24px; '
+            f'margin:12px 0 4px 0; display:inline-block;">'
+            f'<span style="color:#FFFFFF; font-size:1rem; font-weight:600;">'
+            f'💰 Capital total invertido este mes:&nbsp;&nbsp;</span>'
+            f'<span style="color:#FFFFFF; font-size:1.4rem; font-weight:800;">{capital_fmt}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
     # --- Filtros ---
     fc1, fc2 = st.columns([2, 1])
     with fc1:
