@@ -450,6 +450,73 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    st.markdown("### 🌐 Contexto de mercado")
+    st.caption("Indicadores económicos en tiempo real para ajustar las sugerencias de compra.")
+
+    # --- Obtener dólar desde mindicador.cl ---
+    import requests as _req
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _obtener_indicadores():
+        try:
+            r = _req.get("https://mindicador.cl/api/dolar/2026", timeout=6)
+            data = r.json()
+            valores = [v["valor"] for v in data.get("serie", [])]
+            dolar_hoy = valores[0] if valores else None
+            promedio_6m = sum(valores[:6]) / len(valores[:6]) if len(valores) >= 6 else None
+            return dolar_hoy, promedio_6m
+        except Exception:
+            return None, None
+
+    dolar_hoy, dolar_prom = _obtener_indicadores()
+
+    if dolar_hoy and dolar_prom:
+        variacion_dolar = (dolar_hoy - dolar_prom) / dolar_prom * 100
+
+        # Determinar condición y ajuste sugerido
+        if variacion_dolar >= 10:
+            condicion = "🔴 Adversa"
+            ajuste_sugerido = -20
+            color_cond = "#8B0000"
+        elif variacion_dolar >= 5:
+            condicion = "🟡 Moderada"
+            ajuste_sugerido = -10
+            color_cond = "#B8860B"
+        elif variacion_dolar <= -5:
+            condicion = "🟢 Favorable"
+            ajuste_sugerido = 10
+            color_cond = "#006400"
+        else:
+            condicion = "⚪ Normal"
+            ajuste_sugerido = 0
+            color_cond = "#444444"
+
+        st.markdown(
+            f'<div style="background:#F5F5F5; border-radius:8px; padding:10px 14px; margin-bottom:8px;">'
+            f'<b>💵 Dólar hoy:</b> ${dolar_hoy:,.0f} CLP<br>'
+            f'<b>📊 Promedio 6 meses:</b> ${dolar_prom:,.0f} CLP<br>'
+            f'<b>📈 Variación:</b> {variacion_dolar:+.1f}%<br>'
+            f'<b>Condición:</b> <span style="color:{color_cond}; font-weight:bold;">{condicion}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        ajuste_mercado = st.slider(
+            "Ajuste por contexto de mercado (%)",
+            min_value=-30, max_value=20,
+            value=ajuste_sugerido, step=5,
+            help=f"El modelo sugiere {ajuste_sugerido:+d}% según el dólar actual vs promedio. Puedes modificarlo."
+        )
+        if ajuste_mercado != 0:
+            st.caption(f"{'⬇️ Reduciendo' if ajuste_mercado < 0 else '⬆️ Aumentando'} sugerencias de compra en {abs(ajuste_mercado)}%")
+    else:
+        st.caption("⚠️ No se pudo obtener el indicador. Ajuste manual:")
+        ajuste_mercado = st.slider(
+            "Ajuste por contexto de mercado (%)",
+            min_value=-30, max_value=20,
+            value=0, step=5,
+        )
+
+    st.markdown("---")
     st.caption("📌 Prototipo v1.0")
     st.caption("En la app definitiva, los datos vendrán directo de Ailoo")
 
@@ -504,6 +571,16 @@ with st.spinner("Procesando datos... (toma ~30 segundos la primera vez)"):
         st.exception(e)
         st.stop()
 
+
+
+# ============================================================================
+# APLICAR AJUSTE DE MERCADO
+# ============================================================================
+if ajuste_mercado != 0:
+    factor = 1 + ajuste_mercado / 100
+    modelo["COMPRA_AJUSTADA"] = (modelo["COMPRA_AJUSTADA"] * factor).clip(lower=0).round(0)
+    if "COSTO_COMPRA_AJUSTADA" in modelo.columns:
+        modelo["COSTO_COMPRA_AJUSTADA"] = modelo["COSTO_COMPRA_AJUSTADA"] * factor
 
 # ============================================================================
 # KPIs PRINCIPALES
