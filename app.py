@@ -605,22 +605,28 @@ with st.sidebar:
             elif v >= 15:
                 ajuste_sugerido += 3
 
-        # Señal tendencia interna (peso: 30% — la más importante)
+        # Señal tendencia interna (peso dominante — la mas importante)
         if señales["var_interna"] is not None:
             lineas_resumen.append(
                 f"<b>📉 Tendencia interna:</b> últimos 3m vs 3m anteriores | {señales['var_interna']:+.1f}%"
             )
             v = señales["var_interna"]
             if v <= -15:
-                ajuste_sugerido -= 9
+                ajuste_sugerido -= 20
             elif v <= -10:
-                ajuste_sugerido -= 6
+                ajuste_sugerido -= 15
             elif v <= -5:
-                ajuste_sugerido -= 3
+                ajuste_sugerido -= 10
+            elif v < 0:
+                ajuste_sugerido -= 5
             elif v >= 15:
-                ajuste_sugerido += 6
+                ajuste_sugerido += 8
             elif v >= 5:
-                ajuste_sugerido += 3
+                ajuste_sugerido += 4
+
+            # Umbral minimo: si tendencia interna negativa, condicion NUNCA puede ser Normal o Favorable
+            if v < 0:
+                ajuste_sugerido = min(ajuste_sugerido, -5)
 
     # Redondear al múltiplo de 5 más cercano
     ajuste_sugerido = round(ajuste_sugerido / 5) * 5
