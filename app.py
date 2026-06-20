@@ -453,7 +453,6 @@ with st.sidebar:
     st.markdown("### 🌐 Contexto de mercado")
     st.caption("Indicadores económicos en tiempo real para ajustar las sugerencias de compra.")
 
-    # --- Obtener dólar desde mindicador.cl ---
     import requests as _req
     from datetime import date
 
@@ -470,7 +469,7 @@ with st.sidebar:
             return None, None
 
     @st.cache_data(ttl=86400, show_spinner=False)
-    def _calcular_tendencia_ventas():
+    def _calcular_señales_ventas():
         try:
             _HIST = Path(__file__).parent
             archivos_hist = (
@@ -479,7 +478,7 @@ with st.sidebar:
                 list(_HIST.glob("2026*.xlsx"))
             )
             if not archivos_hist:
-                return None, None, None
+                return None
             dfs = []
             for f in archivos_hist:
                 df = pd.read_excel(f, usecols=["Fecha", "Tipo", "Precio Final"])
@@ -494,64 +493,133 @@ with st.sidebar:
             mes_actual = hoy.month
             año_actual = hoy.year
 
-            # Últimos 3 meses completos
-            meses_recientes = []
+            def ventas_mes(año, mes):
+                return hist[(hist["Año"] == año) & (hist["Mes"] == mes)]["Precio Final"].sum()
+
+            # --- Señal 1: Mes actual vs mismo mes año anterior ---
+            v_mes_actual = ventas_mes(año_actual, mes_actual)
+            v_mes_ant = ventas_mes(año_actual - 1, mes_actual)
+            var_anual = ((v_mes_actual - v_mes_ant) / v_mes_ant * 100) if v_mes_ant > 0 else None
+
+            # --- Señal 2: Promedio últimos 3 meses vs mismo período año anterior ---
+            meses_3m = []
             for i in range(1, 4):
                 m = mes_actual - i
                 a = año_actual
                 if m <= 0:
                     m += 12
                     a -= 1
-                meses_recientes.append((a, m))
+                meses_3m.append((a, m))
 
-            ventas_recientes = []
-            ventas_anteriores = []
-            for a, m in meses_recientes:
-                v_actual = hist[(hist["Año"] == a) & (hist["Mes"] == m)]["Precio Final"].sum()
-                v_anterior = hist[(hist["Año"] == a - 1) & (hist["Mes"] == m)]["Precio Final"].sum()
-                if v_actual > 0 and v_anterior > 0:
-                    ventas_recientes.append(v_actual)
-                    ventas_anteriores.append(v_anterior)
+            v_3m_actual = [ventas_mes(a, m) for a, m in meses_3m]
+            v_3m_ant = [ventas_mes(a - 1, m) for a, m in meses_3m]
+            v_3m_actual = [v for v in v_3m_actual if v > 0]
+            v_3m_ant = [v for v in v_3m_ant if v > 0]
+            var_3m_anual = None
+            if v_3m_actual and v_3m_ant and len(v_3m_actual) == len(v_3m_ant):
+                var_3m_anual = (sum(v_3m_actual) / len(v_3m_actual) - sum(v_3m_ant) / len(v_3m_ant)) / (sum(v_3m_ant) / len(v_3m_ant)) * 100
 
-            if not ventas_recientes:
-                return None, None, None
+            # --- Señal 3: Tendencia interna — últimos 3 meses vs 3 meses anteriores (mismo año) ---
+            meses_prev = []
+            for i in range(4, 7):
+                m = mes_actual - i
+                a = año_actual
+                if m <= 0:
+                    m += 12
+                    a -= 1
+                meses_prev.append((a, m))
 
-            prom_reciente = sum(ventas_recientes) / len(ventas_recientes)
-            prom_anterior = sum(ventas_anteriores) / len(ventas_anteriores)
-            variacion = (prom_reciente - prom_anterior) / prom_anterior * 100
-            return prom_reciente, prom_anterior, variacion
+            v_prev = [ventas_mes(a, m) for a, m in meses_prev]
+            v_prev = [v for v in v_prev if v > 0]
+            var_interna = None
+            if v_3m_actual and v_prev:
+                prom_reciente = sum(v_3m_actual) / len(v_3m_actual)
+                prom_previo = sum(v_prev) / len(v_prev)
+                var_interna = (prom_reciente - prom_previo) / prom_previo * 100
+
+            return {
+                "mes_actual": mes_actual,
+                "año_actual": año_actual,
+                "v_mes_actual": v_mes_actual,
+                "v_mes_ant": v_mes_ant,
+                "var_anual": var_anual,
+                "prom_3m_actual": sum(v_3m_actual) / len(v_3m_actual) if v_3m_actual else None,
+                "prom_3m_ant": sum(v_3m_ant) / len(v_3m_ant) if v_3m_ant else None,
+                "var_3m_anual": var_3m_anual,
+                "var_interna": var_interna,
+            }
         except Exception:
-            return None, None, None
+            return None
 
     dolar_hoy, dolar_prom = _obtener_dolar()
-    prom_reciente, prom_anterior, var_ventas = _calcular_tendencia_ventas()
+    señales = _calcular_señales_ventas()
 
-    # --- Calcular ajuste combinado ---
+    # --- Calcular ajuste combinado con pesos ---
     ajuste_sugerido = 0
     lineas_resumen = []
-    condicion = "⚪ Normal"
-    color_cond = "#444444"
 
+    # Señal dólar (peso: 20%)
     if dolar_hoy and dolar_prom:
         var_dolar = (dolar_hoy - dolar_prom) / dolar_prom * 100
-        lineas_resumen.append(f"<b>💵 Dólar hoy:</b> ${dolar_hoy:,.0f} | Prom. 6m: ${dolar_prom:,.0f} | {var_dolar:+.1f}%")
+        lineas_resumen.append(f"<b>💵 Dólar:</b> ${dolar_hoy:,.0f} | Prom.6m: ${dolar_prom:,.0f} | {var_dolar:+.1f}%")
         if var_dolar >= 10:
-            ajuste_sugerido -= 10
+            ajuste_sugerido -= 6
         elif var_dolar >= 5:
-            ajuste_sugerido -= 5
+            ajuste_sugerido -= 3
+        elif var_dolar <= -5:
+            ajuste_sugerido += 3
 
-    if var_ventas is not None:
-        lineas_resumen.append(
-            f"<b>📦 Tendencia ventas (3m):</b> ${prom_reciente/1e6:.1f}M vs ${prom_anterior/1e6:.1f}M año ant. | {var_ventas:+.1f}%"
-        )
-        if var_ventas <= -15:
-            ajuste_sugerido -= 15
-        elif var_ventas <= -10:
-            ajuste_sugerido -= 10
-        elif var_ventas <= -5:
-            ajuste_sugerido -= 5
-        elif var_ventas >= 10:
-            ajuste_sugerido += 5
+    if señales:
+        # Señal año a año mes actual (peso: 30%)
+        if señales["var_anual"] is not None:
+            lineas_resumen.append(
+                f"<b>📅 Mes actual vs año ant.:</b> ${señales['v_mes_actual']/1e6:.1f}M vs ${señales['v_mes_ant']/1e6:.1f}M | {señales['var_anual']:+.1f}%"
+            )
+            v = señales["var_anual"]
+            if v <= -15:
+                ajuste_sugerido -= 9
+            elif v <= -5:
+                ajuste_sugerido -= 6
+            elif v <= 0:
+                ajuste_sugerido -= 3
+            elif v >= 15:
+                ajuste_sugerido += 6
+            elif v >= 5:
+                ajuste_sugerido += 3
+
+        # Señal 3m vs año anterior (peso: 20%)
+        if señales["var_3m_anual"] is not None:
+            lineas_resumen.append(
+                f"<b>📊 Prom.3m vs año ant.:</b> ${señales['prom_3m_actual']/1e6:.1f}M vs ${señales['prom_3m_ant']/1e6:.1f}M | {señales['var_3m_anual']:+.1f}%"
+            )
+            v = señales["var_3m_anual"]
+            if v <= -15:
+                ajuste_sugerido -= 6
+            elif v <= -5:
+                ajuste_sugerido -= 3
+            elif v >= 15:
+                ajuste_sugerido += 3
+
+        # Señal tendencia interna (peso: 30% — la más importante)
+        if señales["var_interna"] is not None:
+            lineas_resumen.append(
+                f"<b>📉 Tendencia interna:</b> últimos 3m vs 3m anteriores | {señales['var_interna']:+.1f}%"
+            )
+            v = señales["var_interna"]
+            if v <= -15:
+                ajuste_sugerido -= 9
+            elif v <= -10:
+                ajuste_sugerido -= 6
+            elif v <= -5:
+                ajuste_sugerido -= 3
+            elif v >= 15:
+                ajuste_sugerido += 6
+            elif v >= 5:
+                ajuste_sugerido += 3
+
+    # Redondear al múltiplo de 5 más cercano
+    ajuste_sugerido = round(ajuste_sugerido / 5) * 5
+    ajuste_sugerido = max(-30, min(20, ajuste_sugerido))
 
     # Condición combinada
     if ajuste_sugerido <= -20:
@@ -563,9 +631,12 @@ with st.sidebar:
     elif ajuste_sugerido <= -5:
         condicion = "🟡 Moderada"
         color_cond = "#B8860B"
-    elif ajuste_sugerido >= 5:
+    elif ajuste_sugerido >= 10:
         condicion = "🟢 Favorable"
         color_cond = "#006400"
+    elif ajuste_sugerido >= 5:
+        condicion = "🟢 Levemente favorable"
+        color_cond = "#228B22"
     else:
         condicion = "⚪ Normal"
         color_cond = "#444444"
@@ -584,7 +655,7 @@ with st.sidebar:
         "Ajuste por contexto de mercado (%)",
         min_value=-30, max_value=20,
         value=ajuste_sugerido, step=5,
-        help="Ajuste automático basado en dólar + tendencia de ventas reales vs año anterior. Puedes modificarlo."
+        help="Ajuste automático basado en 3 señales: dólar, comparación año a año y tendencia interna. Puedes modificarlo."
     )
     if ajuste_mercado != 0:
         st.caption(f"{'⬇️ Reduciendo' if ajuste_mercado < 0 else '⬆️ Aumentando'} sugerencias en {abs(ajuste_mercado)}%")
