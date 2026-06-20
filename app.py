@@ -455,8 +455,10 @@ with st.sidebar:
 
     # --- Obtener dólar desde mindicador.cl ---
     import requests as _req
+    from datetime import date
+
     @st.cache_data(ttl=3600, show_spinner=False)
-    def _obtener_indicadores():
+    def _obtener_dolar():
         try:
             r = _req.get("https://mindicador.cl/api/dolar/2026", timeout=6)
             data = r.json()
@@ -467,54 +469,125 @@ with st.sidebar:
         except Exception:
             return None, None
 
-    dolar_hoy, dolar_prom = _obtener_indicadores()
+    @st.cache_data(ttl=86400, show_spinner=False)
+    def _calcular_tendencia_ventas():
+        try:
+            _HIST = Path(__file__).parent
+            archivos_hist = (
+                list(_HIST.glob("ENE-MAY*2025*.xlsx")) +
+                list(_HIST.glob("JUN-DIC*2025*.xlsx")) +
+                list(_HIST.glob("2026*.xlsx"))
+            )
+            if not archivos_hist:
+                return None, None, None
+            dfs = []
+            for f in archivos_hist:
+                df = pd.read_excel(f, usecols=["Fecha", "Tipo", "Precio Final"])
+                dfs.append(df)
+            hist = pd.concat(dfs, ignore_index=True)
+            hist = hist[hist["Tipo"] == "BOLETA"].copy()
+            hist["Fecha"] = pd.to_datetime(hist["Fecha"], dayfirst=True)
+            hist["Año"] = hist["Fecha"].dt.year
+            hist["Mes"] = hist["Fecha"].dt.month
+
+            hoy = date.today()
+            mes_actual = hoy.month
+            año_actual = hoy.year
+
+            # Últimos 3 meses completos
+            meses_recientes = []
+            for i in range(1, 4):
+                m = mes_actual - i
+                a = año_actual
+                if m <= 0:
+                    m += 12
+                    a -= 1
+                meses_recientes.append((a, m))
+
+            ventas_recientes = []
+            ventas_anteriores = []
+            for a, m in meses_recientes:
+                v_actual = hist[(hist["Año"] == a) & (hist["Mes"] == m)]["Precio Final"].sum()
+                v_anterior = hist[(hist["Año"] == a - 1) & (hist["Mes"] == m)]["Precio Final"].sum()
+                if v_actual > 0 and v_anterior > 0:
+                    ventas_recientes.append(v_actual)
+                    ventas_anteriores.append(v_anterior)
+
+            if not ventas_recientes:
+                return None, None, None
+
+            prom_reciente = sum(ventas_recientes) / len(ventas_recientes)
+            prom_anterior = sum(ventas_anteriores) / len(ventas_anteriores)
+            variacion = (prom_reciente - prom_anterior) / prom_anterior * 100
+            return prom_reciente, prom_anterior, variacion
+        except Exception:
+            return None, None, None
+
+    dolar_hoy, dolar_prom = _obtener_dolar()
+    prom_reciente, prom_anterior, var_ventas = _calcular_tendencia_ventas()
+
+    # --- Calcular ajuste combinado ---
+    ajuste_sugerido = 0
+    lineas_resumen = []
+    condicion = "⚪ Normal"
+    color_cond = "#444444"
 
     if dolar_hoy and dolar_prom:
-        variacion_dolar = (dolar_hoy - dolar_prom) / dolar_prom * 100
+        var_dolar = (dolar_hoy - dolar_prom) / dolar_prom * 100
+        lineas_resumen.append(f"<b>💵 Dólar hoy:</b> ${dolar_hoy:,.0f} | Prom. 6m: ${dolar_prom:,.0f} | {var_dolar:+.1f}%")
+        if var_dolar >= 10:
+            ajuste_sugerido -= 10
+        elif var_dolar >= 5:
+            ajuste_sugerido -= 5
 
-        # Determinar condición y ajuste sugerido
-        if variacion_dolar >= 10:
-            condicion = "🔴 Adversa"
-            ajuste_sugerido = -20
-            color_cond = "#8B0000"
-        elif variacion_dolar >= 5:
-            condicion = "🟡 Moderada"
-            ajuste_sugerido = -10
-            color_cond = "#B8860B"
-        elif variacion_dolar <= -5:
-            condicion = "🟢 Favorable"
-            ajuste_sugerido = 10
-            color_cond = "#006400"
-        else:
-            condicion = "⚪ Normal"
-            ajuste_sugerido = 0
-            color_cond = "#444444"
+    if var_ventas is not None:
+        lineas_resumen.append(
+            f"<b>📦 Tendencia ventas (3m):</b> ${prom_reciente/1e6:.1f}M vs ${prom_anterior/1e6:.1f}M año ant. | {var_ventas:+.1f}%"
+        )
+        if var_ventas <= -15:
+            ajuste_sugerido -= 15
+        elif var_ventas <= -10:
+            ajuste_sugerido -= 10
+        elif var_ventas <= -5:
+            ajuste_sugerido -= 5
+        elif var_ventas >= 10:
+            ajuste_sugerido += 5
 
+    # Condición combinada
+    if ajuste_sugerido <= -20:
+        condicion = "🔴 Muy adversa"
+        color_cond = "#8B0000"
+    elif ajuste_sugerido <= -10:
+        condicion = "🟠 Adversa"
+        color_cond = "#CC4400"
+    elif ajuste_sugerido <= -5:
+        condicion = "🟡 Moderada"
+        color_cond = "#B8860B"
+    elif ajuste_sugerido >= 5:
+        condicion = "🟢 Favorable"
+        color_cond = "#006400"
+    else:
+        condicion = "⚪ Normal"
+        color_cond = "#444444"
+
+    if lineas_resumen:
+        cuerpo = "<br>".join(lineas_resumen)
         st.markdown(
-            f'<div style="background:#F5F5F5; border-radius:8px; padding:10px 14px; margin-bottom:8px;">'
-            f'<b>💵 Dólar hoy:</b> ${dolar_hoy:,.0f} CLP<br>'
-            f'<b>📊 Promedio 6 meses:</b> ${dolar_prom:,.0f} CLP<br>'
-            f'<b>📈 Variación:</b> {variacion_dolar:+.1f}%<br>'
+            f'<div style="background:#F5F5F5; border-radius:8px; padding:10px 14px; margin-bottom:8px; font-size:0.85rem;">'
+            f'{cuerpo}<br>'
             f'<b>Condición:</b> <span style="color:{color_cond}; font-weight:bold;">{condicion}</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-        ajuste_mercado = st.slider(
-            "Ajuste por contexto de mercado (%)",
-            min_value=-30, max_value=20,
-            value=ajuste_sugerido, step=5,
-            help=f"El modelo sugiere {ajuste_sugerido:+d}% según el dólar actual vs promedio. Puedes modificarlo."
-        )
-        if ajuste_mercado != 0:
-            st.caption(f"{'⬇️ Reduciendo' if ajuste_mercado < 0 else '⬆️ Aumentando'} sugerencias de compra en {abs(ajuste_mercado)}%")
-    else:
-        st.caption("⚠️ No se pudo obtener el indicador. Ajuste manual:")
-        ajuste_mercado = st.slider(
-            "Ajuste por contexto de mercado (%)",
-            min_value=-30, max_value=20,
-            value=0, step=5,
-        )
+    ajuste_mercado = st.slider(
+        "Ajuste por contexto de mercado (%)",
+        min_value=-30, max_value=20,
+        value=ajuste_sugerido, step=5,
+        help="Ajuste automático basado en dólar + tendencia de ventas reales vs año anterior. Puedes modificarlo."
+    )
+    if ajuste_mercado != 0:
+        st.caption(f"{'⬇️ Reduciendo' if ajuste_mercado < 0 else '⬆️ Aumentando'} sugerencias en {abs(ajuste_mercado)}%")
 
     st.markdown("---")
     st.caption("📌 Prototipo v1.0")
