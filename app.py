@@ -496,9 +496,14 @@ with st.sidebar:
             def ventas_mes(año, mes):
                 return hist[(hist["Año"] == año) & (hist["Mes"] == mes)]["Precio Final"].sum()
 
-            # --- Señal 1: Mes actual vs mismo mes año anterior ---
-            v_mes_actual = ventas_mes(año_actual, mes_actual)
-            v_mes_ant = ventas_mes(año_actual - 1, mes_actual)
+            def ventas_mes_hasta_dia(año, mes, dia):
+                mask = (hist["Año"] == año) & (hist["Mes"] == mes) & (hist["Fecha"].dt.day <= dia)
+                return hist[mask]["Precio Final"].sum()
+
+            # --- Señal 1: Mes actual vs mismo período año anterior (hasta el mismo día) ---
+            dia_hoy = hoy.day
+            v_mes_actual = ventas_mes_hasta_dia(año_actual, mes_actual, dia_hoy)
+            v_mes_ant = ventas_mes_hasta_dia(año_actual - 1, mes_actual, dia_hoy)
             var_anual = ((v_mes_actual - v_mes_ant) / v_mes_ant * 100) if v_mes_ant > 0 else None
 
             # --- Señal 2: Promedio últimos 3 meses vs mismo período año anterior ---
