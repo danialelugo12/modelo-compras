@@ -413,7 +413,7 @@ def hoja_sobrestock(wb: Workbook, modelo: pd.DataFrame):
     df = df[
         ["Id", "Marca", "Producto", "CLASIFICACION_ABC", "STOCK_ACTUAL",
          "DEMANDA_MENSUAL", "COBERTURA_MESES", "COBERTURA_OBJETIVO",
-         "EXCESO_UNIDADES", "ULTIMO_PRECIO_NETO", "VALOR_EXCESO"]
+         "EXCESO_UNIDADES", "ULTIMO_PRECIO_NETO", "Precio AILOO", "VALOR_EXCESO"]
     ].rename(columns={
         "Id": "ID", "Marca": "MARCA", "Producto": "PRODUCTO",
         "CLASIFICACION_ABC": "ABC", "STOCK_ACTUAL": "STOCK",
@@ -422,6 +422,7 @@ def hoja_sobrestock(wb: Workbook, modelo: pd.DataFrame):
         "COBERTURA_OBJETIVO": "COBERTURA OBJ",
         "EXCESO_UNIDADES": "EXCESO UNIDADES",
         "ULTIMO_PRECIO_NETO": "COSTO UNITARIO",
+        "Precio AILOO": "PRECIO AILOO",
         "VALOR_EXCESO": "VALOR EXCESO",
     })
     df = df.sort_values("VALOR EXCESO", ascending=False)
