@@ -879,7 +879,7 @@ with tab3:
     st.dataframe(
         s[["Id", "Marca", "Producto", "CLASIFICACION_ABC", "STOCK_ACTUAL",
            "DEMANDA_MENSUAL", "COBERTURA_MESES", "EXCESO_UNIDADES",
-           "ULTIMO_PRECIO_NETO", "Precio AILOO", "VALOR_EXCESO"]],
+           "ULTIMO_PRECIO_NETO", "Precio AILOO", "ULTIMO_PROVEEDOR", "VALOR_EXCESO"]],
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -888,6 +888,7 @@ with tab3:
             "EXCESO_UNIDADES": st.column_config.NumberColumn("Exceso uds", format="%.1f"),
             "ULTIMO_PRECIO_NETO": st.column_config.NumberColumn("Costo unit", format="$%d"),
             "Precio AILOO": st.column_config.NumberColumn("Precio AILOO", format="$%d"),
+            "ULTIMO_PROVEEDOR": "Proveedor",
             "VALOR_EXCESO": st.column_config.NumberColumn("Valor exceso", format="$%d"),
             "CLASIFICACION_ABC": "ABC",
             "STOCK_ACTUAL": "Stock",
